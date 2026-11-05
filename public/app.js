@@ -19,6 +19,73 @@ const IDEAS = [
 const STYLES = ["pop", "lo-fi hip hop", "rock", "EDM", "jazz", "R&B", "country", "cinematic", "acoustic", "synthwave"];
 const VARIETY = ["Off", "Normal", "High", "Extra", "Max"];
 
+// Accent colours per genre. Order matters: more specific genres come first.
+const GENRES = [
+  { key: "synthwave", name: "Synthwave", match: /synth ?wave|retro ?wave|outrun|vaporwave|80s/, c: ["#c026d3", "#0891b2"] },
+  { key: "lofi", name: "Lo-fi / Chill", match: /lo-?fi|chill|study|downtempo/, c: ["#7c6cf0", "#3b82f6"] },
+  { key: "hiphop", name: "Hip hop / Rap", match: /hip ?-?hop|rap|trap|drill|boom ?bap|grime/, c: ["#ea7a0c", "#dc2626"] },
+  { key: "rnb", name: "R&B / Soul", match: /r ?& ?b|rnb|soul|motown/, c: ["#9333ea", "#db2777"] },
+  { key: "metal", name: "Metal / Punk", match: /metal|punk|hardcore|grunge|thrash|emo\b/, c: ["#b91c1c", "#44403c"] },
+  { key: "rock", name: "Rock", match: /rock|guitar|indie|alternative/, c: ["#dc2626", "#ea580c"] },
+  { key: "edm", name: "Electronic / EDM", match: /edm|electro|house|techno|trance|dubstep|dance|drum ?(and|&|n) ?bass|dnb|club/, c: ["#0891b2", "#7c3aed"] },
+  { key: "jazz", name: "Jazz / Blues", match: /jazz|blues|swing|bossa|lounge|funk|disco/, c: ["#b45309", "#9f1239"] },
+  { key: "country", name: "Country / Folk", match: /country|folk|acoustic|bluegrass|americana|singer-?songwriter/, c: ["#b7791f", "#4d7c0f"] },
+  { key: "reggae", name: "Reggae / Afro", match: /reggae|dancehall|\bska\b|\bdub\b|afro|amapiano/, c: ["#15803d", "#ca8a04"] },
+  { key: "latin", name: "Latin", match: /latin|reggaeton|salsa|bachata|cumbia|samba|flamenco/, c: ["#e11d48", "#d97706"] },
+  { key: "cinematic", name: "Cinematic / Classical", match: /cinematic|orchestral|classical|epic|score|soundtrack|piano|ambient|choir/, c: ["#4f46e5", "#0284c7"] },
+  { key: "kpop", name: "K-pop / J-pop", match: /k-?pop|j-?pop|anime/, c: ["#ec4899", "#06b6d4"] },
+  { key: "pop", name: "Pop", match: /pop/, c: ["#db2777", "#a855f7"] },
+];
+const DEFAULT_GENRE = { key: "default", name: "Default colours", c: ["#8b5cf6", "#ec4899"] };
+
+/** Picks the genre whose keyword appears earliest in the text. */
+function detectGenre(text) {
+  const t = (text || "").toLowerCase();
+  let best = null;
+  let bestIdx = Infinity;
+  for (const g of GENRES) {
+    const m = t.match(g.match);
+    if (m && m.index < bestIdx) {
+      best = g;
+      bestIdx = m.index;
+    }
+  }
+  return best || DEFAULT_GENRE;
+}
+const genreByKey = (key) => GENRES.find((g) => g.key === key) || DEFAULT_GENRE;
+
+function applyGenre() {
+  // With no style typed, simple mode falls back to the song description.
+  const text = $("#style").value || (mode === "simple" ? $("#prompt").value : "");
+  const g = detectGenre(text);
+  const root = document.documentElement.style;
+  root.setProperty("--accent", g.c[0]);
+  root.setProperty("--accent2", g.c[1]);
+  $("#genreName").textContent = g === DEFAULT_GENRE ? "Default colours" : `${g.name} colours`;
+  return g;
+}
+
+/* ---------------- theme ---------------- */
+const THEME_KEY = "songforge.theme";
+function getTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    return "system";
+  }
+}
+function setTheme(choice) {
+  if (choice === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = choice;
+  try {
+    localStorage.setItem(THEME_KEY, choice);
+  } catch {
+    /* ignore */
+  }
+  $$("[data-theme-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeChoice === choice)));
+}
+
 const STATUS_TEXT = {
   PENDING: "Queued",
   TEXT_SUCCESS: "Writing lyrics",
@@ -111,6 +178,7 @@ function setMode(next) {
   $$(".simple-only").forEach((el) => (el.hidden = next !== "simple"));
   $$(".custom-only").forEach((el) => (el.hidden = next !== "custom"));
   syncInstrumental();
+  applyGenre();
 }
 
 function syncInstrumental() {
@@ -122,9 +190,14 @@ function syncInstrumental() {
     : "[Verse]\nCity lights are fading slow...\n\n[Chorus]\n...";
 }
 
-function addChips(container, items, onPick) {
+function addChips(container, items, onPick, colorize = false) {
   items.forEach((text) => {
     const b = document.createElement("button");
+    if (colorize) {
+      const g = detectGenre(text);
+      b.dataset.c1 = g.key;
+      b.style.setProperty("--c1", g.c[0]);
+    }
     b.type = "button";
     b.className = "chip";
     b.textContent = text.length > 38 ? text.slice(0, 36) + "…" : text;
@@ -190,6 +263,7 @@ async function onGenerate(e) {
       taskId: data.taskId,
       label: payload.title || payload.prompt || payload.style || "Untitled song",
       model: payload.model,
+      genre: detectGenre(payload.style || payload.prompt).key,
       createdAt: Date.now(),
       status: "PENDING",
       tracks: [],
@@ -318,6 +392,9 @@ function renderJob(job) {
   if (!el) {
     el = $("#jobTpl").content.firstElementChild.cloneNode(true);
     el.dataset.taskId = job.taskId;
+    const g = genreByKey(job.genre);
+    el.style.setProperty("--accent", g.c[0]);
+    el.style.setProperty("--accent2", g.c[1]);
   }
   const done = job.status === "SUCCESS";
   const failed = FAILED.has(job.status) || job.status === "TIMEOUT";
@@ -352,7 +429,11 @@ function renderJob(job) {
     $(".track-title", tr).textContent = [t.title || "Untitled", fmtDuration(t.duration)].filter(Boolean).join(" · ");
     $(".track-tags", tr).textContent = t.tags || "";
     const img = $(".cover", tr);
-    if (t.image && img.getAttribute("src") !== t.image) img.src = t.image;
+    // Transparent placeholder lets the genre gradient show when there's no artwork.
+    const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    img.onerror = () => (img.src = BLANK);
+    const wanted = t.image || BLANK;
+    if (img.getAttribute("src") !== wanted) img.src = wanted;
 
     const audio = $("audio", tr);
     const src = t.audio || t.stream;
@@ -415,13 +496,27 @@ function init() {
   bindRange("weirdness", "weirdnessOut", (v) => Number(v).toFixed(2));
   bindRange("variety", "varietyOut", (v) => VARIETY[v]);
 
-  addChips($("#ideaChips"), IDEAS, (t) => ($("#prompt").value = t));
-  addChips($("#styleChips"), STYLES, (t) => {
-    const cur = $("#style").value.trim();
-    const parts = cur ? cur.split(/\s*,\s*/) : [];
-    if (!parts.includes(t)) parts.push(t);
-    $("#style").value = parts.join(", ");
+  addChips($("#ideaChips"), IDEAS, (t) => {
+    $("#prompt").value = t;
+    applyGenre();
   });
+  addChips(
+    $("#styleChips"),
+    STYLES,
+    (t) => {
+      const cur = $("#style").value.trim();
+      const parts = cur ? cur.split(/\s*,\s*/) : [];
+      if (!parts.includes(t)) parts.push(t);
+      $("#style").value = parts.join(", ");
+      applyGenre();
+    },
+    true
+  );
+  $("#style").addEventListener("input", applyGenre);
+  $("#prompt").addEventListener("input", applyGenre);
+
+  $$("[data-theme-choice]").forEach((b) => (b.onclick = () => setTheme(b.dataset.themeChoice)));
+  setTheme(getTheme());
 
   setMode("simple");
   render();
