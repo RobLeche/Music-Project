@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SongForge – AI Music Generator</title>
+  <meta name="description" content="Turn an idea into a full song with AI." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">♪</span> SongForge</div>
+    <div class="credits" id="credits" title="Remaining Suno API credits">Credits: —</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel create">
+      <h1>Create a song</h1>
+      <p class="sub">Describe an idea and get two full tracks in about a minute.</p>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-mode="simple" role="tab" aria-selected="true">Simple</button>
+        <button class="tab" data-mode="custom" role="tab" aria-selected="false">Custom</button>
+      </div>
+
+      <form id="genForm" autocomplete="off">
+        <!-- Simple mode -->
+        <div class="mode simple-only">
+          <label for="prompt">Song description</label>
+          <textarea id="prompt" maxlength="3000" rows="4" placeholder="An upbeat summer pop song about road trips with friends"></textarea>
+          <div class="chips" id="ideaChips"></div>
+        </div>
+
+        <!-- Custom mode -->
+        <div class="mode custom-only" hidden>
+          <label for="title">Title <span class="opt">optional</span></label>
+          <input id="title" maxlength="80" placeholder="Midnight Drive" />
+
+          <div class="label-row">
+            <label for="lyrics">Lyrics</label>
+            <button type="button" class="link" id="lyricsBtn">✨ Write lyrics with AI</button>
+          </div>
+          <div class="lyrics-helper" id="lyricsHelper" hidden>
+            <input id="lyricsPrompt" maxlength="200" placeholder="What should the lyrics be about?" />
+            <button type="button" class="btn small" id="lyricsGo">Generate</button>
+          </div>
+          <textarea id="lyrics" maxlength="5000" rows="8" placeholder="[Verse]&#10;City lights are fading slow...&#10;&#10;[Chorus]&#10;..."></textarea>
+        </div>
+
+        <label for="style">Style / genre <span class="opt simple-only">optional</span></label>
+        <input id="style" maxlength="1000" placeholder="lo-fi, chill, warm piano, 85 bpm" />
+        <div class="chips" id="styleChips"></div>
+
+        <div class="row">
+          <label class="switch">
+            <input type="checkbox" id="instrumental" />
+            <span class="slider"></span>
+            Instrumental (no vocals)
+          </label>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced settings</summary>
+          <label for="model">Model</label>
+          <select id="model">
+            <option value="V6">V6 – best quality (recommended)</option>
+            <option value="V6_WILD">V6 Wild – bolder, more experimental</option>
+            <option value="V6_MINI">V6 Mini – fastest</option>
+          </select>
+
+          <div class="custom-only" hidden>
+            <label for="negativeTags">Avoid these styles <span class="opt">optional</span></label>
+            <input id="negativeTags" maxlength="1000" placeholder="heavy metal, harsh drums" />
+
+            <div class="grid2">
+              <div>
+                <label for="vocalGender">Vocals</label>
+                <select id="vocalGender">
+                  <option value="">Any</option>
+                  <option value="f">Female</option>
+                  <option value="m">Male</option>
+                </select>
+              </div>
+              <div>
+                <label for="duration">Length (seconds)</label>
+                <input id="duration" type="number" min="10" max="360" placeholder="auto" />
+              </div>
+            </div>
+
+            <label for="styleWeight">Style adherence <output id="styleWeightOut">0.65</output></label>
+            <input id="styleWeight" type="range" min="0" max="1" step="0.01" value="0.65" />
+            <label for="weirdness">Creativity / weirdness <output id="weirdnessOut">0.50</output></label>
+            <input id="weirdness" type="range" min="0" max="1" step="0.01" value="0.5" />
+            <label for="variety">Variety between versions <output id="varietyOut">Normal</output></label>
+            <input id="variety" type="range" min="0" max="4" step="1" value="1" />
+          </div>
+        </details>
+
+        <button class="btn primary" id="genBtn" type="submit">
+          <span class="btn-label">Generate song</span>
+        </button>
+        <p class="error" id="formError" role="alert" hidden></p>
+      </form>
+    </section>
+
+    <section class="panel library">
+      <div class="lib-head">
+        <h2>Your songs</h2>
+        <button class="link" id="clearBtn" type="button">Clear history</button>
+      </div>
+      <div id="jobs"></div>
+      <div class="empty" id="empty">
+        <div class="empty-icon">🎧</div>
+        <p>Your generated songs will appear here.</p>
+        <p class="hint">Files are kept by Suno for 14 days – download the ones you love.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="pwDialog">
+    <form method="dialog" id="pwForm">
+      <h3>Enter app password</h3>
+      <p class="sub">This app is password protected.</p>
+      <input id="pwInput" type="password" required autocomplete="current-password" />
+      <p class="error" id="pwError" hidden>Incorrect password.</p>
+      <button class="btn primary" type="submit">Continue</button>
+    </form>
+  </dialog>
+
+  <template id="jobTpl">
+    <article class="job">
+      <div class="job-head">
+        <div>
+          <div class="job-title"></div>
+          <div class="job-meta"></div>
+        </div>
+        <span class="badge"></span>
+      </div>
+      <div class="progress"><div class="bar"></div></div>
+      <div class="tracks"></div>
+      <p class="error job-error" hidden></p>
+    </article>
+  </template>
+
+  <template id="trackTpl">
+    <div class="track">
+      <img class="cover" alt="" loading="lazy" />
+      <div class="track-body">
+        <div class="track-title"></div>
+        <div class="track-tags"></div>
+        <audio controls preload="none"></audio>
+        <div class="track-actions">
+          <a class="btn small dl" download target="_blank" rel="noopener">⬇ Download MP3</a>
+          <button class="btn small ghost show-lyrics" type="button">Lyrics</button>
+        </div>
+        <pre class="track-lyrics" hidden></pre>
+      </div>
+    </div>
+  </template>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
